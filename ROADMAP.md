@@ -12,6 +12,9 @@ directly and has a private-socket integration test; it constructs no TUI state.
 The peer publishes a closed interactive/headless presentation capability
 manifest, and the standalone CLI can disclose it without connecting. Hosts may
 negotiate that manifest, but Agora's service remains the authority owner.
+Standalone headless failures retain the same versioned envelope and distinguish
+connection refusal, not-sent access, outcome-unknown delivery, refusal, and
+invalid replies while exiting unsuccessfully.
 
 ## Delivery order
 

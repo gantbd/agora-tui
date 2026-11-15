@@ -38,12 +38,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Err(usage().into());
     }
 
-    let (client_id, port) = agora_tui_local_client::LocalServicePort::connect(
+    let connection = agora_tui_local_client::LocalServicePort::connect(
         &socket,
         &participant,
         agora_tui_local_client::LocalClientLimits::default(),
-    )
-    .map_err(|error| std::io::Error::other(format!("Agora connection refused: {error:?}")))?;
+    );
+    let (client_id, port) = match connection {
+        Ok(connection) => connection,
+        Err(error) if mode == "headless" => {
+            return headless_failure(
+                "connect_refused",
+                &format!("Agora connection refused: {error:?}"),
+            );
+        }
+        Err(error) => {
+            return Err(
+                std::io::Error::other(format!("Agora connection refused: {error:?}")).into(),
+            );
+        }
+    };
     let client = agora_client::v2::ClientV2::new(client_id, port);
     if mode == "interactive" {
         run_interactive(agora_tui::Component::new(client))
@@ -89,12 +102,23 @@ fn run_headless(
 ) -> Result<(), Box<dyn std::error::Error>> {
     use agora_protocol::v2::{CommandV2, OutcomeV2, ReplyV2};
 
-    let reply = client
-        .execute(CommandV2::Rooms {
-            cursor: None,
-            limit: 32,
-        })
-        .map_err(|error| std::io::Error::other(format!("Agora read failed: {error:?}")))?;
+    let reply = match client.execute(CommandV2::Rooms {
+        cursor: None,
+        limit: 32,
+    }) {
+        Ok(reply) => reply,
+        Err(error) => {
+            use agora_client::v2::ClientErrorV2;
+            let status = match error {
+                ClientErrorV2::NotSent(_) => "not_sent",
+                ClientErrorV2::OutcomeUnknown(_) | ClientErrorV2::UnresolvedOutcome => {
+                    "outcome_unknown"
+                }
+                ClientErrorV2::RequestIdExhausted => "request_id_exhausted",
+            };
+            return headless_failure(status, "Agora read did not produce a current reply");
+        }
+    };
     match reply {
         ReplyV2::Accepted(OutcomeV2::Rooms(page)) => {
             let rooms = page
@@ -124,10 +148,27 @@ fn run_headless(
             Ok(())
         }
         ReplyV2::Refused(reason) => {
-            Err(std::io::Error::other(format!("Agora read refused: {reason:?}")).into())
+            headless_failure("refused", &format!("Agora read refused: {reason:?}"))
         }
-        ReplyV2::Accepted(_) => Err(std::io::Error::other("unexpected Agora reply").into()),
+        ReplyV2::Accepted(_) => headless_failure("invalid_reply", "unexpected Agora reply"),
     }
+}
+
+#[cfg(unix)]
+fn headless_failure(status: &str, message: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let manifest = agora_tui::CAPABILITIES;
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&serde_json::json!({
+            "version": 1,
+            "mode": "headless",
+            "complete": false,
+            "peer": manifest.peer,
+            "capability": manifest.headless[0],
+            "status": status,
+        }))?
+    );
+    Err(std::io::Error::other(message).into())
 }
 
 fn usage() -> &'static str {

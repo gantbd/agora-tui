@@ -22,6 +22,25 @@ use agora_wire::{
 static NEXT: AtomicU64 = AtomicU64::new(0);
 
 #[test]
+fn headless_cli_reports_connection_refusal_as_versioned_json() {
+    let socket = std::env::temp_dir().join(format!(
+        "agora-tui-missing-{}-{}",
+        std::process::id(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
+    ));
+    let output = Command::new(env!("CARGO_BIN_EXE_agora-tui"))
+        .args(["headless", socket.to_str().unwrap(), "operator"])
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["version"], 1);
+    assert_eq!(report["complete"], false);
+    assert_eq!(report["capability"], "rooms.read.v2");
+    assert_eq!(report["status"], "connect_refused");
+}
+
+#[test]
 fn headless_cli_reads_rooms_without_constructing_terminal_state() {
     let root = std::env::temp_dir().join(format!(
         "agora-tui-cli-{}-{}",
