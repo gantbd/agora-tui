@@ -1,0 +1,30 @@
+[package]
+name = "agora-tui-cli"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "Standalone interactive and headless CLI for agora-tui"
+
+[[bin]]
+name = "agora-tui"
+path = "src/main.rs"
+doc = false
+
+[dependencies]
+agora-tui = { path = ".." }
+agora-tui-local-client = { path = "../local-client" }
+agora-client = { version = "=0.1.0", path = "../../agora/client/agora-client" }
+agora-protocol = { version = "=0.1.0", path = "../../agora/protocol/agora-protocol" }
+ratatui = { version = "=0.30.2", default-features = false, features = ["crossterm"] }
+crossterm = "=0.29.0"
+
+[dev-dependencies]
+agora-wire = { version = "=0.1.0", path = "../../agora/protocol/agora-wire" }
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = "warn"
