@@ -34,11 +34,15 @@ cargo run -p agora-tui-cli --bin agora-tui --locked --offline -- \
   interactive /private/tmp/agora.sock operator
 cargo run -p agora-tui-cli --bin agora-tui --locked --offline -- \
   headless /private/tmp/agora.sock operator
+cargo run -p agora-tui-cli --bin agora-tui --locked --offline -- capabilities
 ```
 
 Headless emits a versioned `rooms.read.v2` JSON observation with exact revision,
 bounded room identities, truncation, freshness status, and no presentation
 state.
+The `capabilities` command prints the peer-owned interactive/headless manifest
+without connecting to a service; it describes host composition support, not
+participant authority.
 
 ```sh
 cargo test --workspace --all-targets --locked --offline

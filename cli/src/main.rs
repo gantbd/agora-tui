@@ -13,6 +13,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("{}", usage());
         return Ok(());
     }
+    if mode == "capabilities" {
+        if args.next().is_some() {
+            return Err(usage().into());
+        }
+        let manifest = agora_tui::CAPABILITIES;
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&serde_json::json!({
+                "schema": manifest.schema,
+                "peer": manifest.peer,
+                "interactive": manifest.interactive,
+                "headless": manifest.headless,
+            }))?
+        );
+        return Ok(());
+    }
     let socket = PathBuf::from(args.next().ok_or_else(usage)?);
     let participant = args
         .next()
@@ -115,7 +131,7 @@ fn run_headless(
 }
 
 fn usage() -> &'static str {
-    "usage: agora-tui <interactive|headless> SOCKET PARTICIPANT\nheadless emits one bounded versioned rooms.read.v2 JSON observation without constructing TUI state"
+    "usage: agora-tui capabilities | agora-tui <interactive|headless> SOCKET PARTICIPANT\ncapabilities prints the peer-owned presentation manifest without connecting; headless emits one bounded versioned rooms.read.v2 JSON observation without constructing TUI state"
 }
 
 #[cfg(not(unix))]

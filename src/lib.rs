@@ -15,6 +15,24 @@ use ratatui::{
 
 const PAGE_LIMIT: u32 = 32;
 
+/// Presentation capabilities owned by this peer. These identify supported host
+/// composition surfaces; they do not grant Agora authority or claim that a
+/// connected service will authorize a particular observation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct CapabilityManifest {
+    pub schema: u8,
+    pub peer: &'static str,
+    pub interactive: &'static [&'static str],
+    pub headless: &'static [&'static str],
+}
+
+pub const CAPABILITIES: CapabilityManifest = CapabilityManifest {
+    schema: 1,
+    peer: "agora",
+    interactive: &["rooms.read.v2", "messages.read.v2"],
+    headless: &["rooms.read.v2"],
+};
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Input {
     Up,

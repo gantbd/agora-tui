@@ -29,4 +29,10 @@ fn presentation_depends_only_on_agoras_public_client_boundary() {
     assert!(entry.contains("headless"));
     assert!(entry.contains("Component::new"));
     assert!(entry.contains("CommandV2::Rooms"));
+    assert!(entry.contains("agora_tui::CAPABILITIES"));
+    assert!(
+        fs::read_to_string(root.join("src/lib.rs"))
+            .unwrap()
+            .contains("messages.read.v2")
+    );
 }
