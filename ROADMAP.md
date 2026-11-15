@@ -9,6 +9,9 @@ The separately packaged `agora-tui-cli` now owns argument parsing, selected
 Unix transport, terminal lifecycle, and process exit. Its interactive mode
 hosts the reusable component. Its headless mode reads the same public client
 directly and has a private-socket integration test; it constructs no TUI state.
+The peer publishes a closed interactive/headless presentation capability
+manifest, and the standalone CLI can disclose it without connecting. Hosts may
+negotiate that manifest, but Agora's service remains the authority owner.
 
 ## Delivery order
 
