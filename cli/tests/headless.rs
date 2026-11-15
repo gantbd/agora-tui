@@ -41,6 +41,22 @@ fn headless_cli_reports_connection_refusal_as_versioned_json() {
 }
 
 #[test]
+fn headless_cli_reports_configuration_refusal_as_versioned_json() {
+    let output = Command::new(env!("CARGO_BIN_EXE_agora-tui"))
+        .arg("headless")
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["version"], 1);
+    assert_eq!(report["mode"], "headless");
+    assert_eq!(report["complete"], false);
+    assert_eq!(report["peer"], "agora");
+    assert_eq!(report["capability"], "rooms.read.v2");
+    assert_eq!(report["status"], "configuration_refused");
+}
+
+#[test]
 fn headless_cli_reads_rooms_without_constructing_terminal_state() {
     let root = std::env::temp_dir().join(format!(
         "agora-tui-cli-{}-{}",

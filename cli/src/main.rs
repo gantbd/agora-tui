@@ -29,14 +29,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
         return Ok(());
     }
-    let socket = PathBuf::from(args.next().ok_or_else(usage)?);
-    let participant = args
-        .next()
-        .and_then(|value| value.into_string().ok())
-        .ok_or_else(usage)?;
-    if args.next().is_some() {
+    if mode != "interactive" && mode != "headless" {
         return Err(usage().into());
     }
+    let parsed = (|| {
+        let socket = PathBuf::from(args.next().ok_or_else(usage)?);
+        let participant = args
+            .next()
+            .and_then(|value| value.into_string().ok())
+            .ok_or_else(usage)?;
+        if args.next().is_some() {
+            return Err(usage());
+        }
+        Ok::<_, &'static str>((socket, participant))
+    })();
+    let (socket, participant) = match parsed {
+        Ok(parsed) => parsed,
+        Err(error) if mode == "headless" => {
+            return headless_failure("configuration_refused", error);
+        }
+        Err(error) => return Err(error.into()),
+    };
 
     let connection = agora_tui_local_client::LocalServicePort::connect(
         &socket,
@@ -121,6 +134,7 @@ fn run_headless(
     };
     match reply {
         ReplyV2::Accepted(OutcomeV2::Rooms(page)) => {
+            let manifest = agora_tui::CAPABILITIES;
             let rooms = page
                 .rooms
                 .into_iter()
@@ -137,8 +151,8 @@ fn run_headless(
                     "version": 1,
                     "mode": "headless",
                     "complete": true,
-                    "peer": "agora",
-                    "capability": "rooms.read.v2",
+                    "peer": manifest.peer,
+                    "capability": manifest.headless[0],
                     "status": "current",
                     "revision": page.revision,
                     "rooms": rooms,
