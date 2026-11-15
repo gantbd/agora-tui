@@ -44,9 +44,18 @@ fn headless_cli_reads_rooms_without_constructing_terminal_state() {
         "{}",
         String::from_utf8_lossy(&output.stderr)
     );
-    let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("Agora rooms revision=11 count=1 truncated=false"));
-    assert!(stdout.contains("profile-room\tProfile Room"));
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["version"], 1);
+    assert_eq!(report["mode"], "headless");
+    assert_eq!(report["complete"], true);
+    assert_eq!(report["capability"], "rooms.read.v2");
+    assert_eq!(report["status"], "current");
+    assert_eq!(report["revision"], 11);
+    assert_eq!(
+        report["rooms"],
+        serde_json::json!([{"id":"profile-room", "name":"Profile Room"}])
+    );
+    assert_eq!(report["truncated"], false);
     server.join().unwrap();
     fs::remove_dir_all(root).unwrap();
 }

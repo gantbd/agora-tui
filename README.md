@@ -36,6 +36,10 @@ cargo run -p agora-tui-cli --bin agora-tui --locked --offline -- \
   headless /private/tmp/agora.sock operator
 ```
 
+Headless emits a versioned `rooms.read.v2` JSON observation with exact revision,
+bounded room identities, truncation, freshness status, and no presentation
+state.
+
 ```sh
 cargo test --workspace --all-targets --locked --offline
 ```

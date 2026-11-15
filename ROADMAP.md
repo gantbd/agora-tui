@@ -21,8 +21,9 @@ directly and has a private-socket integration test; it constructs no TUI state.
    startup, global shortcuts, and process exit out of this crate.
 4. [Initial slice qualified] Qualify the component under two hosts: Agora's standalone CLI and Workbench.
    Both must route the same closed input and lifecycle outputs.
-5. [Standalone headless qualified; Workbench headless open] Qualify standalone and Workbench headless paths through Agora's client
-   contract without constructing this component or fabricating cursor state.
+5. [Qualified] Standalone and Workbench headless paths use Agora's public client
+   contract directly, report the explicit `rooms.read.v2` capability, and
+   construct neither the component nor fabricated cursor state.
 
 The standalone Agora CLI may run this TUI interactively or execute bounded
 headless commands. Workbench may reuse this TUI while attaching to Agora or

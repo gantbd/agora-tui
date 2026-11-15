@@ -81,15 +81,30 @@ fn run_headless(
         .map_err(|error| std::io::Error::other(format!("Agora read failed: {error:?}")))?;
     match reply {
         ReplyV2::Accepted(OutcomeV2::Rooms(page)) => {
+            let rooms = page
+                .rooms
+                .into_iter()
+                .map(|room| {
+                    serde_json::json!({
+                        "id": room.room_id,
+                        "name": room.name,
+                    })
+                })
+                .collect::<Vec<_>>();
             println!(
-                "Agora rooms revision={} count={} truncated={}",
-                page.revision,
-                page.rooms.len(),
-                page.next.is_some()
+                "{}",
+                serde_json::to_string_pretty(&serde_json::json!({
+                    "version": 1,
+                    "mode": "headless",
+                    "complete": true,
+                    "peer": "agora",
+                    "capability": "rooms.read.v2",
+                    "status": "current",
+                    "revision": page.revision,
+                    "rooms": rooms,
+                    "truncated": page.next.is_some(),
+                }))?
             );
-            for room in page.rooms {
-                println!("{}\t{}", room.room_id, room.name);
-            }
             Ok(())
         }
         ReplyV2::Refused(reason) => {
@@ -100,7 +115,7 @@ fn run_headless(
 }
 
 fn usage() -> &'static str {
-    "usage: agora-tui <interactive|headless> SOCKET PARTICIPANT"
+    "usage: agora-tui <interactive|headless> SOCKET PARTICIPANT\nheadless emits one bounded versioned rooms.read.v2 JSON observation without constructing TUI state"
 }
 
 #[cfg(not(unix))]
