@@ -23,6 +23,13 @@ serde_json = "=1.0.151"
 
 [dev-dependencies]
 agora-wire = { version = "=0.1.0", path = "../../agora/protocol/agora-wire" }
+agora-aegis-verifier = { version = "=0.1.0", path = "../../agora/adapters/agora-aegis-verifier" }
+agora-engine = { version = "=0.3.0", path = "../../agora/engine/agora-engine" }
+agora-host = { version = "=0.1.0", path = "../../agora/host/agora-host" }
+agora-local-daemon = { version = "=0.1.0", path = "../../agora/applications/agora-local-daemon" }
+agora-service = { version = "=0.1.0", path = "../../agora/service/agora-service" }
+aegis-client = { version = "=0.1.0", path = "../../aegis/crates/aegis-client" }
+aegis-protocol = { version = "=0.1.0", path = "../../aegis/crates/aegis-protocol" }
 
 [lints.rust]
 unsafe_code = "forbid"

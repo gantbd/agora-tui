@@ -36,3 +36,24 @@ fn presentation_depends_only_on_agoras_public_client_boundary() {
             .contains("messages.read.v2")
     );
 }
+
+#[test]
+fn standalone_live_gate_uses_the_real_daemon_in_both_modes() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let gate = fs::read_to_string(root.join("tests/live/real_daemon.sh"))
+        .expect("real-daemon live gate");
+    for required in [
+        "real_daemon_fixture",
+        "headless",
+        "interactive",
+        "rooms.read.v2",
+        "tmux",
+        "--locked",
+        "--offline",
+    ] {
+        assert!(gate.contains(required), "live gate omits {required}");
+    }
+    for forbidden in ["cargo publish", "git push", "gh release", "curl "] {
+        assert!(!gate.contains(forbidden), "live gate performs {forbidden}");
+    }
+}

@@ -46,4 +46,10 @@ participant authority.
 
 ```sh
 cargo test --workspace --all-targets --locked --offline
+sh tests/live/real_daemon.sh
 ```
+
+The live gate launches Agora's real local daemon with explicitly test-only
+authority inputs, then drives this standalone executable through both headless
+room observation and interactive room/message projection. It does not turn the
+TUI or CLI into an authority owner or define Agora's production daemon policy.
