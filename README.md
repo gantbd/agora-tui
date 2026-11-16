@@ -15,12 +15,13 @@ Embed with `Component::new(client)`, call `poll()`, route closed `Input` values
 through `update`, and render with `draw_in(frame, rect, focused)`. The host owns
 terminal setup, global navigation, focus and process exit.
 
-`agora-tui-local-client` is the selected private Unix interpretation for a
-standalone host. It validates the socket type, mode and owner, negotiates the
-bounded Agora handshake, enforces the server request budget and classifies
-pre-dispatch failures separately from outcome-unknown transmission. The
-participant value remains an identity claim checked against daemon-established
-peer facts; it grants no authority.
+`agora-tui-local-client` supplies explicit private Unix interpretations for the
+conversation-only and routed composition transports. Both validate the socket
+type, mode and owner, negotiate the bounded Agora handshake, enforce the server
+request budget, close the logical session before transport teardown, and
+classify pre-dispatch failures separately from outcome-unknown transmission.
+Routing changes framing only: the public Protocol V2 client and participant
+claim are unchanged, and the claim grants no authority.
 
 See [ROADMAP.md](ROADMAP.md) for the standalone CLI, Workbench composition, and
 headless-parity delivery boundary.

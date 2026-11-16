@@ -19,6 +19,11 @@ negotiate that manifest, but Agora's service remains the authority owner.
 Standalone headless failures retain the same versioned envelope and distinguish
 configuration or connection refusal, not-sent access, outcome-unknown delivery,
 semantic refusal, and invalid replies while exiting unsuccessfully.
+The selected local client now exposes the same Protocol V2 port through either
+Agora's conversation-only handshake or its additive composition routing. The
+choice is explicit at the application boundary; it is never guessed from a
+failed handshake. Both paths explicitly disconnect so a long-running owner can
+distinguish clean session completion from transport failure.
 
 ## Delivery order
 
