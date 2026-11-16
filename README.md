@@ -1,6 +1,6 @@
 # Agora TUI
 
-`agora-tui` is an unpublished composable Ratatui presentation for Agora's
+`agora-tui` is a source-distributed composable Ratatui presentation for Agora's
 public Protocol V2 client. It owns room and message projection, selection,
 input translation and rendering. It owns no terminal lifecycle, transport,
 authentication, conversation state or authority.
@@ -54,7 +54,7 @@ without connecting to a service; it describes host composition support, not
 participant authority.
 
 ```sh
-cargo test --workspace --all-targets --locked --offline
+make check
 sh tests/live/real_daemon.sh
 ```
 

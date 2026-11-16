@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - name: Check out Agora TUI
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with: { path: agora-tui, persist-credentials: false }
+      - name: Check out Keystone dependency
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with: { repository: gantbd/keystone, ref: 2e4faf10ec0a70805aa1db1555f93c77fcf0a1e4, path: keystone, persist-credentials: false }
+      - name: Check out Aegis dependency
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with: { repository: gantbd/aegis, ref: 0446e4fcf7412be9e0313523235d4e674d2fdd94, path: aegis, persist-credentials: false }
+      - name: Check out Agora dependency
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with: { repository: gantbd/agora, ref: 68cead6ab665c9646148f80818a7aeef92994543, path: agora, persist-credentials: false }
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install 1.95.0 --profile minimal --component clippy,rustfmt
+      - name: Fetch locked dependencies
+        working-directory: agora-tui
+        run: cargo fetch --locked
+      - name: Audit current RustSec advisories
+        working-directory: agora-tui
+        run: |
+          cargo install cargo-audit --version 0.23.0 --locked
+          cargo audit --deny warnings
+      - name: Verify workspace
+        working-directory: agora-tui
+        run: make check
+      - name: Verify real daemon profile
+        working-directory: agora-tui
+        run: make qualify-daemon
