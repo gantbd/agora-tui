@@ -20,6 +20,15 @@ fn presentation_depends_only_on_agoras_public_client_boundary() {
     let readme = fs::read_to_string(root.join("README.md")).expect("README");
     assert!(readme.contains("owns no terminal lifecycle"));
     assert!(readme.contains("agora-tui-local-client"));
+    assert!(readme.contains("`agora-local-client`, owned by Agora"));
+
+    let facade = fs::read_to_string(root.join("local-client/src/lib.rs")).expect("facade");
+    assert!(facade.contains("pub use agora_local_client::*"));
+    assert!(!facade.contains("UnixStream"));
+    let facade_manifest =
+        fs::read_to_string(root.join("local-client/Cargo.toml")).expect("facade manifest");
+    assert!(facade_manifest.contains("agora-local-client"));
+    assert!(!facade_manifest.contains("agora-wire"));
 
     let cli = fs::read_to_string(root.join("cli/Cargo.toml")).expect("CLI manifest");
     assert!(cli.contains("name = \"agora-tui-cli\""));

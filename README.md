@@ -15,8 +15,9 @@ Embed with `Component::new(client)`, call `poll()`, route closed `Input` values
 through `update`, and render with `draw_in(frame, rect, focused)`. The host owns
 terminal setup, global navigation, focus and process exit.
 
-`agora-tui-local-client` supplies explicit private Unix interpretations for the
-conversation-only and routed composition transports. Both validate the socket
+`agora-local-client`, owned by Agora, supplies explicit private Unix
+interpretations for the conversation-only and routed composition transports;
+`agora-tui-local-client` is a compatibility facade. Both transports validate the socket
 type, mode and owner, negotiate the bounded Agora handshake, enforce the server
 request budget, close the logical session before transport teardown, and
 classify pre-dispatch failures separately from outcome-unknown transmission.

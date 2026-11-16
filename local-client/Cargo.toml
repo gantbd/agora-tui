@@ -5,13 +5,10 @@ edition = "2024"
 rust-version = "1.95"
 license = "MIT OR Apache-2.0"
 publish = false
-description = "Selected private Unix client composition for Agora TUI"
+description = "Compatibility facade for Agora's owner-maintained local Unix client"
 
 [dependencies]
-agora-client = { version = "=0.1.0", path = "../../agora/client/agora-client" }
-agora-protocol = { version = "=0.1.0", path = "../../agora/protocol/agora-protocol" }
-agora-wire = { version = "=0.1.0", path = "../../agora/protocol/agora-wire" }
-rustix = { version = "=1.1.4", features = ["process"] }
+agora-local-client = { version = "=0.1.0", path = "../../agora/client/agora-local-client" }
 
 [lints.rust]
 unsafe_code = "forbid"

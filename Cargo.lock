@@ -86,6 +86,16 @@ name = "agora-interaction-port"
 version = "0.1.0"
 
 [[package]]
+name = "agora-local-client"
+version = "0.1.0"
+dependencies = [
+ "agora-client",
+ "agora-protocol",
+ "agora-scheduled-publication-port",
+ "agora-wire",
+]
+
+[[package]]
 name = "agora-local-daemon"
 version = "0.1.0"
 dependencies = [
@@ -179,10 +189,7 @@ dependencies = [
 name = "agora-tui-local-client"
 version = "0.1.0"
 dependencies = [
- "agora-client",
- "agora-protocol",
- "agora-wire",
- "rustix",
+ "agora-local-client",
 ]
 
 [[package]]
