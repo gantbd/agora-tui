@@ -40,8 +40,8 @@ fn presentation_depends_only_on_agoras_public_client_boundary() {
 #[test]
 fn standalone_live_gate_uses_the_real_daemon_in_both_modes() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let gate = fs::read_to_string(root.join("tests/live/real_daemon.sh"))
-        .expect("real-daemon live gate");
+    let gate =
+        fs::read_to_string(root.join("tests/live/real_daemon.sh")).expect("real-daemon live gate");
     for required in [
         "real_daemon_fixture",
         "headless",
