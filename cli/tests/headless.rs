@@ -22,6 +22,36 @@ use agora_wire::{
 static NEXT: AtomicU64 = AtomicU64::new(0);
 
 #[test]
+fn create_room_refuses_bad_confirmation_before_connecting() {
+    let missing = std::env::temp_dir().join(format!(
+        "agora-tui-create-missing-{}-{}",
+        std::process::id(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
+    ));
+    let output = Command::new(env!("CARGO_BIN_EXE_agora-tui"))
+        .args([
+            "create-room",
+            missing.to_str().unwrap(),
+            "operator",
+            "delivery",
+            "Delivery Room",
+            "invite-only",
+            "7",
+            "CREATE SOMETHING ELSE",
+        ])
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["capability"], "rooms.create.v2");
+    assert_eq!(report["status"], "confirmation_refused");
+    assert_eq!(
+        report["required_confirmation"],
+        "CREATE AGORA ROOM delivery NAMED Delivery Room ADMISSION INVITE ONLY AT REVISION 7"
+    );
+}
+
+#[test]
 fn headless_cli_reports_connection_refusal_as_versioned_json() {
     let socket = std::env::temp_dir().join(format!(
         "agora-tui-missing-{}-{}",

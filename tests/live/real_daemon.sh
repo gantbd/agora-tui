@@ -21,7 +21,7 @@ cleanup() {
 trap cleanup EXIT HUP INT TERM
 
 cargo build --manifest-path "$repo/Cargo.toml" --package agora-tui-cli \
-  --bin agora-tui --example real_daemon_fixture \
+  --bin agora-tui --example real_daemon_fixture --example create_room_replay \
   --locked --offline --target-dir "$target"
 
 start_daemon() {
@@ -44,6 +44,48 @@ finish_daemon() {
   wait "$daemon_pid"
   daemon_pid=
 }
+
+start_daemon
+if "$target/debug/agora-tui" create-room "$socket" operator stale-room \
+  'Stale Room' invite-only 2 \
+  'CREATE AGORA ROOM stale-room NAMED Stale Room ADMISSION INVITE ONLY AT REVISION 2' \
+  >"$scratch/stale.json" 2>"$scratch/stale.err"; then
+  echo 'FAIL: stale Agora room creation was accepted' >&2
+  exit 1
+fi
+finish_daemon
+python3 - "$scratch/stale.json" <<'PYTHON'
+import json, sys
+report = json.load(open(sys.argv[1]))
+assert not report["complete"]
+assert report["capability"] == "rooms.create.v2"
+assert report["status"] == "refused"
+PYTHON
+echo 'PASS: real Agora daemon refused stale standalone room creation'
+
+start_daemon
+created=$("$target/debug/agora-tui" create-room "$socket" operator delivery-room \
+  'Delivery Room' invite-only 3 \
+  'CREATE AGORA ROOM delivery-room NAMED Delivery Room ADMISSION INVITE ONLY AT REVISION 3')
+finish_daemon
+printf '%s' "$created" | python3 -c '
+import json, sys
+report = json.load(sys.stdin)
+assert report == {
+    "version": 1,
+    "peer": "agora",
+    "capability": "rooms.create.v2",
+    "complete": True,
+    "status": "created",
+    "room_id": "delivery-room",
+    "revision": 4,
+}
+'
+echo 'PASS: real Agora daemon -> exact-confirmed standalone room creation'
+
+start_daemon
+"$target/debug/examples/create_room_replay" "$socket"
+finish_daemon
 
 start_daemon
 headless=$("$target/debug/agora-tui" headless "$socket" operator)

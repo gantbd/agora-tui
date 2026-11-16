@@ -36,12 +36,19 @@ cargo run -p agora-tui-cli --bin agora-tui --locked --offline -- \
   interactive /private/tmp/agora.sock operator
 cargo run -p agora-tui-cli --bin agora-tui --locked --offline -- \
   headless /private/tmp/agora.sock operator
+cargo run -p agora-tui-cli --bin agora-tui --locked --offline -- \
+  create-room /private/tmp/agora.sock operator delivery 'Delivery Room' \
+  invite-only 7 \
+  'CREATE AGORA ROOM delivery NAMED Delivery Room ADMISSION INVITE ONLY AT REVISION 7'
 cargo run -p agora-tui-cli --bin agora-tui --locked --offline -- capabilities
 ```
 
 Headless emits a versioned `rooms.read.v2` JSON observation with exact revision,
 bounded room identities, truncation, freshness status, and no presentation
-state.
+state. The separate `create-room` command reuses Agora's owner-client
+`rooms.create.v2` guard. It requires an exact room/revision confirmation before
+connection, attempts the actor-bound mutation once, and reports the durable
+revision receipt or an explicit uncertain outcome.
 The `capabilities` command prints the peer-owned interactive/headless manifest
 without connecting to a service; it describes host composition support, not
 participant authority.
@@ -52,6 +59,8 @@ sh tests/live/real_daemon.sh
 ```
 
 The live gate launches Agora's real local daemon with explicitly test-only
-authority inputs, then drives this standalone executable through both headless
-room observation and interactive room/message projection. It does not turn the
-TUI or CLI into an authority owner or define Agora's production daemon policy.
+authority inputs, then drives this standalone executable through exact-confirmed
+room creation, stale-revision refusal, deliberately lost-reply exact replay,
+headless room observation and interactive room/message projection. It does not
+turn the TUI or CLI into an authority owner or define Agora's production daemon
+policy.

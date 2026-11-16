@@ -32,6 +32,10 @@ distinguish clean session completion from transport failure.
    unavailable or outcome-unknown states.
 2. Add mutations only with exact confirmation, invocation identity, current
    authorization, and replay/reconciliation behavior supplied by Agora.
+   [Qualified] `rooms.create.v2` now reuses Agora's owner-client guard in the
+   standalone and Workbench command shells. Exact room facts and revision are
+   confirmed before connection; the authenticated service supplies the actor,
+   and a discarded real reply resolves only through exact request replay.
 3. Keep terminal lifecycle, argument parsing, transport selection, daemon
    startup, global shortcuts, and process exit out of this crate.
 4. [Qualified] Qualify the component under two hosts: Agora's standalone CLI and Workbench.
