@@ -28,7 +28,7 @@ jobs:
         with: { repository: gantbd/aegis, ref: 0446e4fcf7412be9e0313523235d4e674d2fdd94, path: aegis, persist-credentials: false }
       - name: Check out Agora dependency
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with: { repository: gantbd/agora, ref: 45b11bcd1e9b7b21e79faf8f1794f8379622f635, path: agora, persist-credentials: false }
+        with: { repository: gantbd/agora, ref: 9ab9e0f2c467c3b6501e08c44f10f679b8ed6cd8, path: agora, persist-credentials: false }
       - name: Install pinned Rust toolchain
         run: rustup toolchain install 1.95.0 --profile minimal --component clippy,rustfmt
       - name: Install live-gate prerequisites
