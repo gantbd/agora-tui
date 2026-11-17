@@ -5,15 +5,37 @@ public Protocol V2 client. It owns room and message projection, selection,
 input translation and rendering. It owns no terminal lifecycle, transport,
 authentication, conversation state or authority.
 
-The initial read-only slice lists one bounded room page and opens one bounded
-message page. Requests run on a presentation-owned worker so service waits do
-not block the terminal update path. An outcome-unknown read retains the exact
-command and only `Refresh` may replay it; the component never substitutes a
-different request or infers success.
+The observation surface lists one bounded room page, then keeps a
+room navigator beside a wrapped author/message timeline so room context does
+not disappear while reading. Requests run on a presentation-owned worker so
+service waits do not block the terminal update path. An outcome-unknown read
+retains the exact command and only `Refresh` may replay it; the component never
+substitutes a different request or infers success.
 
 Embed with `Component::new(client)`, call `poll()`, route closed `Input` values
 through `update`, and render with `draw_in(frame, rect, focused)`. The host owns
 terminal setup, global navigation, focus and process exit.
+
+Hosts with Agora control authority may separately compose
+`CreateRoomComponent`. Its bounded form captures room identity, name, admission
+policy, and the exact observed room revision; arm/confirm submits once on a
+worker. Pending and outcome-unknown requests cannot be dismissed, and recovery
+requires an explicit replay of the byte-identical retained request on the same
+client session.
+
+`ComposeMessageComponent` is the separate write-authority surface for real
+conversation work. It accepts a bounded multiline body and an optional
+comma-separated set of up to 64 participant ids, canonicalizes that complete
+set, and binds delivery to the room revision and owner-provided next sequence
+observed by `Component::message_target()`. Arm/confirm performs one attempt on
+a worker and reports the owner revision and message sequence. Content and
+recipient identities remain out of receipts and instrumentation; uncertain
+delivery fences dismissal and permits only exact retained-request replay.
+When embedded beside `Component`, construct controls from
+`Component::control_handle()`. This serializes observation and guarded effects
+through the same peer-owned `ClientV2` request namespace, matching Agora's
+single-session local owner and preserving one uncertainty fence. The connector
+constructors remain available for standalone control-only hosts.
 
 `agora-local-client`, owned by Agora, supplies explicit private Unix
 interpretations for the conversation-only and routed composition transports;
