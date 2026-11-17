@@ -31,6 +31,8 @@ jobs:
         with: { repository: gantbd/agora, ref: 45b11bcd1e9b7b21e79faf8f1794f8379622f635, path: agora, persist-credentials: false }
       - name: Install pinned Rust toolchain
         run: rustup toolchain install 1.95.0 --profile minimal --component clippy,rustfmt
+      - name: Install live-gate prerequisites
+        run: brew install tmux
       - name: Fetch locked dependencies
         working-directory: agora-tui
         run: cargo fetch --locked
