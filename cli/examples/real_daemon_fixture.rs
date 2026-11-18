@@ -91,6 +91,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         )))
         .map_err(|error| format!("agent participant fixture refused: {error:?}"))?;
     engine
+        .apply(CommandV2::RegisterParticipant(Participant::new(
+            "sre-agent",
+            "SRE Agent",
+            ParticipantKind::Agent,
+        )))
+        .map_err(|error| format!("SRE participant fixture refused: {error:?}"))?;
+    engine
+        .apply(CommandV2::RegisterParticipant(Participant::new(
+            "project-agent",
+            "Project Management Agent",
+            ParticipantKind::Agent,
+        )))
+        .map_err(|error| format!("project participant fixture refused: {error:?}"))?;
+    engine
         .apply(CommandV2::CreateRoom {
             room_id: RoomId::from("live-room"),
             name: "Live Room".into(),
