@@ -18,6 +18,10 @@ use agora_client::{
     message_command::{
         SendMessageErrorV1, SendMessageRequestV1, required_send_confirmation, send_message,
     },
+    peer_conversation_command::{
+        CreatePeerConversationErrorV1, CreatePeerConversationRequestV1, create_peer_conversation,
+        required_peer_conversation_confirmation,
+    },
     room_command::{
         CreateRoomErrorV1, CreateRoomRequestV1, create_room, required_create_confirmation,
     },
@@ -97,6 +101,16 @@ pub struct MessageTargetV1 {
     pub logical_time: u64,
 }
 
+/// Exact bounded message selection for explicit cross-component composition.
+/// `MessageV2` keeps its content-free `Debug` implementation; callers receive
+/// the body only by deliberately requesting the selected value.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MessageSelectionV1 {
+    pub room_id: String,
+    pub observed_revision: u64,
+    pub message: MessageV2,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum Request {
     Rooms,
@@ -156,6 +170,10 @@ enum WorkerCommand {
         request: CreateRoomRequestV1,
         reply: SyncSender<ControlResult<RoomControlReceipt>>,
     },
+    CreatePeerConversation {
+        request: CreatePeerConversationRequestV1,
+        reply: SyncSender<ControlResult<RoomControlReceipt>>,
+    },
     SendMessage {
         request: SendMessageRequestV1,
         reply: SyncSender<ControlResult<MessageControlReceipt>>,
@@ -176,6 +194,24 @@ impl ControlHandle {
         if self
             .requests
             .send(WorkerCommand::CreateRoom {
+                request,
+                reply: reply_tx,
+            })
+            .is_err()
+        {
+            return ControlResult::Failed;
+        }
+        reply_rx.recv().unwrap_or(ControlResult::OutcomeUnknown)
+    }
+
+    fn create_peer_conversation(
+        &self,
+        request: CreatePeerConversationRequestV1,
+    ) -> ControlResult<RoomControlReceipt> {
+        let (reply_tx, reply_rx) = sync_channel(1);
+        if self
+            .requests
+            .send(WorkerCommand::CreatePeerConversation {
                 request,
                 reply: reply_tx,
             })
@@ -266,6 +302,36 @@ impl Component {
                             | Err(CreateRoomErrorV1::Client(ClientErrorV2::RequestIdExhausted))
                             | Err(CreateRoomErrorV1::UnexpectedReply) => ControlResult::Failed,
                         };
+                        let _ = reply.send(result);
+                    }
+                    WorkerCommand::CreatePeerConversation { request, reply } => {
+                        let confirmation = required_peer_conversation_confirmation(&request);
+                        let result =
+                            match create_peer_conversation(&mut client, request, &confirmation) {
+                                Ok(receipt) => ControlResult::Applied(RoomControlReceipt {
+                                    room_id: receipt.room_id,
+                                    revision: receipt.revision,
+                                }),
+                                Err(CreatePeerConversationErrorV1::Client(
+                                    ClientErrorV2::OutcomeUnknown(_),
+                                ))
+                                | Err(CreatePeerConversationErrorV1::Client(
+                                    ClientErrorV2::UnresolvedOutcome,
+                                )) => ControlResult::OutcomeUnknown,
+                                Err(CreatePeerConversationErrorV1::Refused(_))
+                                | Err(CreatePeerConversationErrorV1::ConfirmationRefused {
+                                    ..
+                                }) => ControlResult::Refused,
+                                Err(CreatePeerConversationErrorV1::Client(
+                                    ClientErrorV2::NotSent(_),
+                                ))
+                                | Err(CreatePeerConversationErrorV1::Client(
+                                    ClientErrorV2::RequestIdExhausted,
+                                ))
+                                | Err(CreatePeerConversationErrorV1::UnexpectedReply) => {
+                                    ControlResult::Failed
+                                }
+                            };
                         let _ = reply.send(result);
                     }
                     WorkerCommand::SendMessage { request, reply } => {
@@ -404,6 +470,16 @@ impl Component {
             room_id: self.active_room.clone()?,
             expected_revision: self.message_revision?,
             logical_time: self.next_message_sequence?,
+        })
+    }
+
+    /// Returns only the currently selected owner-observed message. Merely
+    /// selecting or reading a message has no dispatch or prompt side effect.
+    pub fn selected_message(&self) -> Option<MessageSelectionV1> {
+        Some(MessageSelectionV1 {
+            room_id: self.active_room.clone()?,
+            observed_revision: self.message_revision?,
+            message: self.messages.get(self.message_selection)?.clone(),
         })
     }
 
@@ -750,6 +826,11 @@ mod tests {
         assert_eq!(component.update(Input::Open, true), Lifecycle::Running);
         settle(&mut component);
         assert_eq!(component.view(), View::Messages);
+        let selected = component.selected_message().expect("selected message");
+        assert_eq!(selected.room_id, "atlas");
+        assert_eq!(selected.observed_revision, 4);
+        assert_eq!(selected.message.sequence, 1);
+        assert!(selected.message.addressed_to.is_empty());
 
         let mut terminal = Terminal::new(TestBackend::new(70, 12)).unwrap();
         terminal
@@ -825,5 +906,10 @@ mod tests {
         assert_eq!(component.message_revision, Some(5));
         assert_eq!(component.messages.len(), 2);
         assert_eq!(component.messages[1].body, "Shared client delivery");
+        component.update(Input::Down, true);
+        let selected = component.selected_message().expect("selected delivery");
+        assert_eq!(selected.observed_revision, 5);
+        assert_eq!(selected.message.sequence, 2);
+        assert_eq!(selected.message.addressed_to, ["Grace"]);
     }
 }

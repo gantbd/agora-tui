@@ -3,12 +3,16 @@
 use std::sync::mpsc::{Receiver, SyncSender, TryRecvError, sync_channel};
 
 use agora_client::{
+    peer_conversation_command::{
+        CreatePeerConversationErrorV1, CreatePeerConversationRequestV1, create_peer_conversation,
+        required_peer_conversation_confirmation,
+    },
     room_command::{
         CreateRoomErrorV1, CreateRoomRequestV1, create_room, required_create_confirmation,
     },
     v2::{ClientErrorV2, ClientV2, ServicePortV2},
 };
-use agora_protocol::v2::AdmissionPolicyV2;
+use agora_protocol::v2::{AdmissionPolicyV2, ConversationProfileV1};
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::{
     Frame,
@@ -101,8 +105,23 @@ impl Field {
     }
 }
 
+#[derive(Clone)]
+enum RoomCreationRequest {
+    Ordinary(CreateRoomRequestV1),
+    Peer(CreatePeerConversationRequestV1),
+}
+
+impl RoomCreationRequest {
+    fn confirmation(&self) -> String {
+        match self {
+            Self::Ordinary(request) => required_create_confirmation(request),
+            Self::Peer(request) => required_peer_conversation_confirmation(request),
+        }
+    }
+}
+
 enum WorkerRequest {
-    Submit(CreateRoomRequestV1),
+    Submit(RoomCreationRequest),
 }
 
 struct WorkerReply {
@@ -118,9 +137,10 @@ pub struct CreateRoomComponent {
     room_id: String,
     name: String,
     admission: AdmissionPolicyV2,
+    peer_conversation: Option<(ConversationProfileV1, Vec<String>)>,
     field: Field,
     disposition: CreateRoomDisposition,
-    retained: Option<CreateRoomRequestV1>,
+    retained: Option<RoomCreationRequest>,
     applied_receipt: Option<AppliedRoomReceipt>,
     notice: String,
 }
@@ -129,7 +149,10 @@ impl CreateRoomComponent {
     pub fn new_with_handle(handle: ControlHandle, expected_revision: u64) -> Self {
         Self::spawn(expected_revision, move |request_rx, reply_tx| {
             while let Ok(WorkerRequest::Submit(request)) = request_rx.recv() {
-                let result = handle.create_room(request);
+                let result = match request {
+                    RoomCreationRequest::Ordinary(request) => handle.create_room(request),
+                    RoomCreationRequest::Peer(request) => handle.create_peer_conversation(request),
+                };
                 let reply = match result {
                     ControlResult::Applied(receipt) => WorkerReply {
                         disposition: CreateRoomDisposition::Applied,
@@ -173,9 +196,8 @@ impl CreateRoomComponent {
     {
         Self::spawn(expected_revision, move |request_rx, reply_tx| {
             while let Ok(WorkerRequest::Submit(request)) = request_rx.recv() {
-                let confirmation = required_create_confirmation(&request);
-                let result = create_room(&mut client, request, &confirmation);
-                if reply_tx.send(classify(result)).is_err() {
+                let reply = submit(&mut client, request);
+                if reply_tx.send(reply).is_err() {
                     break;
                 }
             }
@@ -211,9 +233,7 @@ impl CreateRoomComponent {
             };
             let mut request = first_request;
             loop {
-                let confirmation = required_create_confirmation(&request);
-                let result = create_room(&mut client, request, &confirmation);
-                if reply_tx.send(classify(result)).is_err() {
+                if reply_tx.send(submit(&mut client, request)).is_err() {
                     break;
                 }
                 let Ok(WorkerRequest::Submit(next)) = request_rx.recv() else {
@@ -238,6 +258,7 @@ impl CreateRoomComponent {
             room_id: String::new(),
             name: String::new(),
             admission: AdmissionPolicyV2::InviteOnly,
+            peer_conversation: None,
             field: Field::RoomId,
             disposition: CreateRoomDisposition::Editing,
             retained: None,
@@ -378,10 +399,65 @@ impl CreateRoomComponent {
         self.room_id = room_id.to_owned();
         self.name = name.to_owned();
         self.admission = admission;
+        self.peer_conversation = None;
         self.field = Field::Review;
         self.notice =
             "Room proposal prefilled; review exact identity, admission, and revision, then press c to arm"
                 .into();
+        Ok(())
+    }
+
+    /// Prefills a direct or group-direct conversation while retaining the
+    /// ordinary review/arm/confirm gate. Participants must already exist in
+    /// Agora; this form neither registers identities nor infers membership.
+    pub fn prefill_peer_conversation(
+        &mut self,
+        room_id: &str,
+        name: &str,
+        profile: ConversationProfileV1,
+        founding_participant_ids: Vec<String>,
+    ) -> Result<(), &'static str> {
+        if self.disposition != CreateRoomDisposition::Editing
+            || self.retained.is_some()
+            || self.applied_receipt.is_some()
+        {
+            return Err("Agora room form is no longer editable");
+        }
+        if room_id.is_empty()
+            || room_id.len() > MAX_ROOM_ID_BYTES
+            || room_id.chars().any(char::is_control)
+        {
+            return Err("Agora room id is empty, over limit, or contains control text");
+        }
+        if name.is_empty() || name.len() > MAX_ROOM_NAME_BYTES || name.chars().any(char::is_control)
+        {
+            return Err("Agora room name is empty, over limit, or contains control text");
+        }
+        let cardinality_valid = match profile {
+            ConversationProfileV1::Direct => founding_participant_ids.len() == 2,
+            ConversationProfileV1::GroupDirect => founding_participant_ids.len() >= 3,
+            ConversationProfileV1::Ordinary => false,
+        };
+        if !cardinality_valid
+            || founding_participant_ids.iter().any(|participant| {
+                participant.is_empty()
+                    || participant.len() > MAX_ROOM_ID_BYTES
+                    || participant.chars().any(char::is_control)
+            })
+            || founding_participant_ids
+                .iter()
+                .enumerate()
+                .any(|(index, participant)| founding_participant_ids[..index].contains(participant))
+        {
+            return Err("Agora peer conversation requires a unique, bounded founding cohort");
+        }
+        let mut founding_participant_ids = founding_participant_ids;
+        founding_participant_ids.sort();
+        self.room_id = room_id.to_owned();
+        self.name = name.to_owned();
+        self.peer_conversation = Some((profile, founding_participant_ids));
+        self.field = Field::Review;
+        self.notice = "Peer conversation prefilled; review exact identity, founding cohort, and revision, then press c to arm".into();
         Ok(())
     }
 
@@ -416,16 +492,25 @@ impl CreateRoomComponent {
         }
     }
 
-    fn proposal(&self) -> Option<CreateRoomRequestV1> {
+    fn proposal(&self) -> Option<RoomCreationRequest> {
         if self.room_id.is_empty() || self.name.is_empty() {
             return None;
         }
-        Some(CreateRoomRequestV1 {
+        if let Some((profile, founding_participant_ids)) = &self.peer_conversation {
+            return Some(RoomCreationRequest::Peer(CreatePeerConversationRequestV1 {
+                room_id: self.room_id.clone(),
+                name: self.name.clone(),
+                profile: *profile,
+                founding_participant_ids: founding_participant_ids.clone(),
+                expected_revision: self.expected_revision,
+            }));
+        }
+        Some(RoomCreationRequest::Ordinary(CreateRoomRequestV1 {
             room_id: self.room_id.clone(),
             name: self.name.clone(),
             admission: self.admission,
             expected_revision: self.expected_revision,
-        })
+        }))
     }
 
     pub fn draw_in(&self, frame: &mut Frame<'_>, area: Rect, focused: bool) {
@@ -454,14 +539,23 @@ impl CreateRoomComponent {
                 Span::raw(value),
             ])
         };
-        let admission = match self.admission {
-            AdmissionPolicyV2::Open => "open",
-            AdmissionPolicyV2::InviteOnly => "invite only",
+        let admission = match &self.peer_conversation {
+            Some((ConversationProfileV1::Direct, participants)) => {
+                format!("direct · {}", participants.join(", "))
+            }
+            Some((ConversationProfileV1::GroupDirect, participants)) => {
+                format!("group direct · {}", participants.join(", "))
+            }
+            Some((ConversationProfileV1::Ordinary, _)) => unreachable!("prefill rejects ordinary"),
+            None => match self.admission {
+                AdmissionPolicyV2::Open => "open".into(),
+                AdmissionPolicyV2::InviteOnly => "invite only".into(),
+            },
         };
         let mut lines = vec![
             field(Field::RoomId, "room id", self.room_id.clone()),
             field(Field::Name, "name", self.name.clone()),
-            field(Field::Admission, "admission", admission.into()),
+            field(Field::Admission, "admission", admission),
             Line::from(""),
             field(Field::Review, "review", format!("{:?}", self.disposition)),
         ];
@@ -472,7 +566,7 @@ impl CreateRoomComponent {
                 "Exact revision-bound proposal",
                 Style::default().add_modifier(Modifier::BOLD),
             ));
-            lines.push(Line::from(required_create_confirmation(request)));
+            lines.push(Line::from(request.confirmation()));
         }
         lines.extend([
             Line::from(""),
@@ -523,7 +617,23 @@ fn push_bounded(target: &mut String, character: char, max_bytes: usize) {
     }
 }
 
-fn classify<E>(
+fn submit<P>(client: &mut ClientV2<P>, request: RoomCreationRequest) -> WorkerReply
+where
+    P: ServicePortV2,
+{
+    match request {
+        RoomCreationRequest::Ordinary(request) => {
+            let confirmation = required_create_confirmation(&request);
+            classify_room(create_room(client, request, &confirmation))
+        }
+        RoomCreationRequest::Peer(request) => {
+            let confirmation = required_peer_conversation_confirmation(&request);
+            classify_peer(create_peer_conversation(client, request, &confirmation))
+        }
+    }
+}
+
+fn classify_room<E>(
     result: Result<agora_client::room_command::CreateRoomReceiptV1, CreateRoomErrorV1<E>>,
 ) -> WorkerReply {
     match result {
@@ -558,5 +668,118 @@ fn classify<E>(
             notice: "Agora room creation failed without a durable receipt".into(),
             receipt: None,
         },
+    }
+}
+
+fn classify_peer<E>(
+    result: Result<
+        agora_client::peer_conversation_command::CreatePeerConversationReceiptV1,
+        CreatePeerConversationErrorV1<E>,
+    >,
+) -> WorkerReply {
+    match result {
+        Ok(receipt) => WorkerReply {
+            disposition: CreateRoomDisposition::Applied,
+            notice: format!(
+                "Agora peer conversation {} durably created at revision {}",
+                receipt.room_id, receipt.revision
+            ),
+            receipt: Some(AppliedRoomReceipt {
+                room_id: receipt.room_id,
+                revision: receipt.revision,
+            }),
+        },
+        Err(CreatePeerConversationErrorV1::Client(ClientErrorV2::OutcomeUnknown(_)))
+        | Err(CreatePeerConversationErrorV1::Client(ClientErrorV2::UnresolvedOutcome)) => {
+            WorkerReply {
+                disposition: CreateRoomDisposition::OutcomeUnknown,
+                notice:
+                    "Agora peer conversation outcome unknown; r replays the exact retained request"
+                        .into(),
+                receipt: None,
+            }
+        }
+        Err(CreatePeerConversationErrorV1::Refused(_))
+        | Err(CreatePeerConversationErrorV1::ConfirmationRefused { .. }) => WorkerReply {
+            disposition: CreateRoomDisposition::Refused,
+            notice: "Agora refused the exact peer conversation proposal; refresh room state".into(),
+            receipt: None,
+        },
+        Err(CreatePeerConversationErrorV1::Client(ClientErrorV2::NotSent(_)))
+        | Err(CreatePeerConversationErrorV1::Client(ClientErrorV2::RequestIdExhausted))
+        | Err(CreatePeerConversationErrorV1::UnexpectedReply) => WorkerReply {
+            disposition: CreateRoomDisposition::Failed,
+            notice: "Agora peer conversation creation failed without a durable receipt".into(),
+            receipt: None,
+        },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn idle_component(revision: u64) -> CreateRoomComponent {
+        CreateRoomComponent::spawn(revision, |_requests, _replies| {})
+    }
+
+    #[test]
+    fn peer_prefill_preserves_exact_human_gate_and_founding_cohort() {
+        let mut component = idle_component(9);
+        component
+            .prefill_peer_conversation(
+                "task-17",
+                "Task · task-17",
+                ConversationProfileV1::Direct,
+                vec!["operator".into(), "local-agent".into()],
+            )
+            .unwrap();
+
+        assert_eq!(component.disposition(), CreateRoomDisposition::Editing);
+        assert!(component.applied_receipt().is_none());
+        assert!(matches!(
+            component.proposal(),
+            Some(RoomCreationRequest::Peer(CreatePeerConversationRequestV1 {
+                profile: ConversationProfileV1::Direct,
+                founding_participant_ids,
+                expected_revision: 9,
+                ..
+            })) if founding_participant_ids == ["local-agent", "operator"]
+        ));
+
+        component.update(CreateRoomInput::Arm, true);
+        assert_eq!(component.disposition(), CreateRoomDisposition::Armed);
+        assert_eq!(
+            component.retained.as_ref().map(RoomCreationRequest::confirmation),
+            Some(
+                "CREATE AGORA DIRECT CONVERSATION task-17 NAMED Task · task-17 WITH local-agent,operator AT REVISION 9"
+                    .into()
+            )
+        );
+    }
+
+    #[test]
+    fn peer_prefill_refuses_ordinary_and_ambiguous_cohorts() {
+        let mut component = idle_component(0);
+        assert!(
+            component
+                .prefill_peer_conversation(
+                    "task-17",
+                    "Task · task-17",
+                    ConversationProfileV1::Ordinary,
+                    vec!["operator".into(), "local-agent".into()],
+                )
+                .is_err()
+        );
+        assert!(
+            component
+                .prefill_peer_conversation(
+                    "task-17",
+                    "Task · task-17",
+                    ConversationProfileV1::Direct,
+                    vec!["operator".into(), "operator".into()],
+                )
+                .is_err()
+        );
     }
 }
