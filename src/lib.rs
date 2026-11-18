@@ -8,7 +8,8 @@ pub use message_control::{
     translate_compose_message_key,
 };
 pub use room_control::{
-    CreateRoomComponent, CreateRoomDisposition, CreateRoomInput, translate_create_room_key,
+    AppliedRoomReceipt, CreateRoomComponent, CreateRoomDisposition, CreateRoomInput,
+    translate_create_room_key,
 };
 
 use std::sync::mpsc::{Receiver, SyncSender, TryRecvError, sync_channel};

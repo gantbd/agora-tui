@@ -67,6 +67,12 @@ pub enum CreateRoomDisposition {
     OutcomeUnknown,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AppliedRoomReceipt {
+    pub room_id: String,
+    pub revision: u64,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Field {
     RoomId,
@@ -102,6 +108,7 @@ enum WorkerRequest {
 struct WorkerReply {
     disposition: CreateRoomDisposition,
     notice: String,
+    receipt: Option<AppliedRoomReceipt>,
 }
 
 pub struct CreateRoomComponent {
@@ -114,6 +121,7 @@ pub struct CreateRoomComponent {
     field: Field,
     disposition: CreateRoomDisposition,
     retained: Option<CreateRoomRequestV1>,
+    applied_receipt: Option<AppliedRoomReceipt>,
     notice: String,
 }
 
@@ -129,19 +137,26 @@ impl CreateRoomComponent {
                             "Agora room {} durably created at revision {}",
                             receipt.room_id, receipt.revision
                         ),
+                        receipt: Some(AppliedRoomReceipt {
+                            room_id: receipt.room_id,
+                            revision: receipt.revision,
+                        }),
                     },
                     ControlResult::OutcomeUnknown => WorkerReply {
                         disposition: CreateRoomDisposition::OutcomeUnknown,
                         notice: "Agora room outcome unknown; r replays the exact retained request"
                             .into(),
+                        receipt: None,
                     },
                     ControlResult::Refused => WorkerReply {
                         disposition: CreateRoomDisposition::Refused,
                         notice: "Agora refused the exact room proposal; refresh room state".into(),
+                        receipt: None,
                     },
                     ControlResult::Failed => WorkerReply {
                         disposition: CreateRoomDisposition::Failed,
                         notice: "Agora room creation failed without a durable receipt".into(),
+                        receipt: None,
                     },
                 };
                 if reply_tx.send(reply).is_err() {
@@ -189,6 +204,7 @@ impl CreateRoomComponent {
                         notice: format!(
                             "Agora room control connection refused before submission: {error:?}"
                         ),
+                        receipt: None,
                     });
                     return;
                 }
@@ -225,6 +241,7 @@ impl CreateRoomComponent {
             field: Field::RoomId,
             disposition: CreateRoomDisposition::Editing,
             retained: None,
+            applied_receipt: None,
             notice: "Name the room; Tab moves through fields".into(),
         }
     }
@@ -234,6 +251,7 @@ impl CreateRoomComponent {
             Ok(reply) => {
                 self.disposition = reply.disposition;
                 self.notice = reply.notice;
+                self.applied_receipt = reply.receipt;
             }
             Err(TryRecvError::Empty) => {}
             Err(TryRecvError::Disconnected)
@@ -330,6 +348,41 @@ impl CreateRoomComponent {
             | CreateRoomInput::Arm
             | CreateRoomInput::Close => {}
         }
+    }
+
+    /// Prefills one exact owner proposal while retaining the ordinary
+    /// review/arm/confirm path. This grants no create authority and submits
+    /// nothing; composed journeys still require an explicit human gate.
+    pub fn prefill(
+        &mut self,
+        room_id: &str,
+        name: &str,
+        admission: AdmissionPolicyV2,
+    ) -> Result<(), &'static str> {
+        if self.disposition != CreateRoomDisposition::Editing
+            || self.retained.is_some()
+            || self.applied_receipt.is_some()
+        {
+            return Err("Agora room form is no longer editable");
+        }
+        if room_id.is_empty()
+            || room_id.len() > MAX_ROOM_ID_BYTES
+            || room_id.chars().any(char::is_control)
+        {
+            return Err("Agora room id is empty, over limit, or contains control text");
+        }
+        if name.is_empty() || name.len() > MAX_ROOM_NAME_BYTES || name.chars().any(char::is_control)
+        {
+            return Err("Agora room name is empty, over limit, or contains control text");
+        }
+        self.room_id = room_id.to_owned();
+        self.name = name.to_owned();
+        self.admission = admission;
+        self.field = Field::Review;
+        self.notice =
+            "Room proposal prefilled; review exact identity, admission, and revision, then press c to arm"
+                .into();
+        Ok(())
     }
 
     fn arm(&mut self) {
@@ -458,6 +511,10 @@ impl CreateRoomComponent {
     pub fn recovery_required(&self) -> bool {
         self.disposition == CreateRoomDisposition::OutcomeUnknown
     }
+
+    pub fn applied_receipt(&self) -> Option<&AppliedRoomReceipt> {
+        self.applied_receipt.as_ref()
+    }
 }
 
 fn push_bounded(target: &mut String, character: char, max_bytes: usize) {
@@ -476,16 +533,22 @@ fn classify<E>(
                 "Agora room {} durably created at revision {}",
                 receipt.room_id, receipt.revision
             ),
+            receipt: Some(AppliedRoomReceipt {
+                room_id: receipt.room_id,
+                revision: receipt.revision,
+            }),
         },
         Err(CreateRoomErrorV1::Client(ClientErrorV2::OutcomeUnknown(_)))
         | Err(CreateRoomErrorV1::Client(ClientErrorV2::UnresolvedOutcome)) => WorkerReply {
             disposition: CreateRoomDisposition::OutcomeUnknown,
             notice: "Agora room outcome unknown; r replays the exact retained request".into(),
+            receipt: None,
         },
         Err(CreateRoomErrorV1::Refused(_)) | Err(CreateRoomErrorV1::ConfirmationRefused { .. }) => {
             WorkerReply {
                 disposition: CreateRoomDisposition::Refused,
                 notice: "Agora refused the exact room proposal; refresh room state".into(),
+                receipt: None,
             }
         }
         Err(CreateRoomErrorV1::Client(ClientErrorV2::NotSent(_)))
@@ -493,6 +556,7 @@ fn classify<E>(
         | Err(CreateRoomErrorV1::UnexpectedReply) => WorkerReply {
             disposition: CreateRoomDisposition::Failed,
             notice: "Agora room creation failed without a durable receipt".into(),
+            receipt: None,
         },
     }
 }

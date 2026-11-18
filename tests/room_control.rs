@@ -79,6 +79,9 @@ fn bounded_form_submits_one_exact_revision_bound_room() {
     enter_proposal(&mut component);
     settle(&mut component);
     assert_eq!(component.disposition(), CreateRoomDisposition::Applied);
+    let receipt = component.applied_receipt().expect("applied owner receipt");
+    assert_eq!(receipt.room_id, "delivery");
+    assert_eq!(receipt.revision, 12);
     let requests = requests.lock().unwrap();
     assert_eq!(requests.len(), 1);
     assert!(matches!(
@@ -104,6 +107,39 @@ fn bounded_form_submits_one_exact_revision_bound_room() {
         .collect::<String>();
     assert!(rendered.contains("CREATE AGORA ROOM delivery"));
     assert!(rendered.contains("Applied"));
+}
+
+#[test]
+fn composed_journey_prefill_still_requires_review_arm_and_confirm() {
+    let (mut component, requests) = component(VecDeque::from([Ok(ReplyV2::Accepted(
+        OutcomeV2::RoomCreated { revision: 12 },
+    ))]));
+    component
+        .prefill(
+            "chronos-task-17",
+            "Task · chronos-task-17",
+            AdmissionPolicyV2::InviteOnly,
+        )
+        .unwrap();
+    assert_eq!(component.disposition(), CreateRoomDisposition::Editing);
+    assert!(requests.lock().unwrap().is_empty());
+    component.update(CreateRoomInput::Confirm, true);
+    assert_eq!(component.disposition(), CreateRoomDisposition::Armed);
+    assert!(requests.lock().unwrap().is_empty());
+    component.update(CreateRoomInput::Confirm, true);
+    settle(&mut component);
+    assert_eq!(component.disposition(), CreateRoomDisposition::Applied);
+    let requests = requests.lock().unwrap();
+    assert_eq!(requests.len(), 1);
+    assert!(matches!(
+        &requests[0].command,
+        CommandV2::CreateRoom {
+            room_id,
+            name,
+            admission: AdmissionPolicyV2::InviteOnly,
+            expected_revision: 11,
+        } if room_id == "chronos-task-17" && name == "Task · chronos-task-17"
+    ));
 }
 
 #[test]
